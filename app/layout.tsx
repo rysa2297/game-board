@@ -7,8 +7,8 @@ import Navbar from "@/components/navbar"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Game Edukatif SPLDV",
-  description: "Game board edukatif untuk pembelajaran Sistem Persamaan Linear Dua Variabel",
+  title: "SPLDV Game - Belajar Matematika dengan Menyenangkan",
+  description: "Game edukasi untuk belajar Sistem Persamaan Linear Dua Variabel (SPLDV) dengan cara yang menyenangkan",
     generator: 'v0.dev'
 }
 
@@ -19,11 +19,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id">
-      <body className={inter.className}>
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-          <Navbar />
-          <main>{children}</main>
-        </div>
+      <body className={`${inter.className} bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-screen`}>
+        <Navbar />
+        <main>{children}</main>
       </body>
     </html>
   )

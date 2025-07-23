@@ -22,10 +22,10 @@ interface Question {
 }
 
 interface QuestionBankManagerProps {
-  guruId: number
+  guruId?: number
 }
 
-export default function QuestionBankManager({ guruId }: QuestionBankManagerProps) {
+export function QuestionBankManager({ guruId }: QuestionBankManagerProps) {
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -35,10 +35,11 @@ export default function QuestionBankManager({ guruId }: QuestionBankManagerProps
 
   const fetchQuestions = async () => {
     try {
-      const response = await fetch(`/api/guru/questions?guru_id=${guruId}`)
+      const url = guruId ? `/api/guru/questions?guru_id=${guruId}` : "/api/guru/questions"
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
-        setQuestions(data.questions)
+        setQuestions(data.questions || data)
       }
     } catch (error) {
       console.error("Error fetching questions:", error)

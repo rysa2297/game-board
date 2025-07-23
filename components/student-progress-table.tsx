@@ -20,10 +20,10 @@ interface StudentProgress {
 }
 
 interface StudentProgressTableProps {
-  guruId: number
+  guruId?: number
 }
 
-export default function StudentProgressTable({ guruId }: StudentProgressTableProps) {
+export function StudentProgressTable({ guruId }: StudentProgressTableProps) {
   const [students, setStudents] = useState<StudentProgress[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -33,10 +33,11 @@ export default function StudentProgressTable({ guruId }: StudentProgressTablePro
 
   const fetchStudentProgress = async () => {
     try {
-      const response = await fetch(`/api/guru/students?guru_id=${guruId}`)
+      const url = guruId ? `/api/guru/students?guru_id=${guruId}` : "/api/guru/students"
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
-        setStudents(data.students)
+        setStudents(data.students || data)
       }
     } catch (error) {
       console.error("Error fetching student progress:", error)

@@ -1,59 +1,50 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { NextResponse } from "next/server"
+import { neon } from "@neondatabase/serverless"
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+const sql = neon(process.env.DATABASE_URL!)
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const guru_id = searchParams.get("guru_id")
-
-    // Get total students
-    const { count: total_students } = await supabase
-      .from("users")
-      .select("*", { count: "exact", head: true })
-      .eq("guru_id", guru_id)
-      .eq("role", "siswa")
+    // Get total unique students
+    const [studentsResult] = await sql`
+      SELECT COUNT(DISTINCT CONCAT(student_name, '-', student_class)) as total_students
+      FROM game_sessions
+    `
 
     // Get total sessions
-    const { count: total_sessions } = await supabase
-      .from("sessions")
-      .select("*", { count: "exact", head: true })
-      .eq("guru_id", guru_id)
-
-    // Get completed sessions
-    const { count: completed_sessions } = await supabase
-      .from("sessions")
-      .select("*", { count: "exact", head: true })
-      .eq("guru_id", guru_id)
-      .eq("is_completed", true)
+    const [sessionsResult] = await sql`
+      SELECT COUNT(*) as total_sessions
+      FROM game_sessions
+    `
 
     // Get average score
-    const { data: sessions } = await supabase
-      .from("sessions")
-      .select("skor")
-      .eq("guru_id", guru_id)
-      .eq("is_completed", true)
+    const [scoreResult] = await sql`
+      SELECT AVG(score) as average_score
+      FROM game_sessions
+      WHERE completed = true
+    `
 
-    const avg_score =
-      sessions && sessions.length > 0 ? sessions.reduce((acc, session) => acc + session.skor, 0) / sessions.length : 0
+    // Get total questions
+    const [questionsResult] = await sql`
+      SELECT COUNT(*) as total_questions
+      FROM questions
+    `
 
-    // Get total questions created by this guru
-    const { count: total_questions } = await supabase
-      .from("questions")
-      .select("*", { count: "exact", head: true })
-      .or(`created_by.eq.${guru_id},created_by.is.null`)
+    // Get total SPLDV submissions
+    const [spldvResult] = await sql`
+      SELECT COUNT(*) as total_spldv_submissions
+      FROM spldv_submissions
+    `
 
-    const stats = {
-      total_students: total_students || 0,
-      total_sessions: total_sessions || 0,
-      completed_sessions: completed_sessions || 0,
-      avg_score: avg_score || 0,
-      total_questions: total_questions || 0,
-    }
-
-    return NextResponse.json({ stats })
+    return NextResponse.json({
+      totalStudents: Number.parseInt(studentsResult.total_students) || 0,
+      totalSessions: Number.parseInt(sessionsResult.total_sessions) || 0,
+      averageScore: Number.parseFloat(scoreResult.average_score) || 0,
+      totalQuestions: Number.parseInt(questionsResult.total_questions) || 0,
+      totalSPLDVSubmissions: Number.parseInt(spldvResult.total_spldv_submissions) || 0,
+    })
   } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Error fetching stats:", error)
+    return NextResponse.json({ error: "Failed to fetch stats" }, { status: 500 })
   }
 }

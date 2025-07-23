@@ -3,94 +3,127 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Clock, Trophy, Palette, Download, Send } from "lucide-react"
-import GameCanvas from "@/components/game-canvas"
-import GameBoard from "@/components/game-board"
-
-interface User {
-  id: number
-  nama: string
-  kelas: string
-  guru_id: number
-}
+import { Progress } from "@/components/ui/progress"
+import { GameBoard } from "@/components/game-board"
+import { Navbar } from "@/components/navbar"
+import { Camera, Upload, Clock, Star, Trophy, Target } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 
 interface Question {
   id: number
-  category: string
-  question: string
+  question_text: string
   option_a: string
   option_b: string
   option_c: string
   option_d: string
   correct_answer: string
-  time_limit: number
+  type: "pilihan_ganda" | "spldv"
+  difficulty: "mudah" | "sedang" | "sulit"
 }
 
-interface GameSession {
-  id: number
-  skor: number
-  total_jawaban: number
-  total_benar: number
-  current_position: number
+interface SPLDVEquation {
+  equation1: string
+  equation2: string
+  solutionX: number
+  solutionY: number
 }
-
-const BOARD_SIZE = 100
 
 export default function GamePage() {
-  const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<GameSession | null>(null)
+  const router = useRouter()
+  const [sessionId, setSessionId] = useState<number | null>(null)
+  const [currentPosition, setCurrentPosition] = useState(1)
+  const [score, setScore] = useState(0)
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null)
   const [selectedAnswer, setSelectedAnswer] = useState("")
-  const [timeLeft, setTimeLeft] = useState(0)
-  const [gameTime, setGameTime] = useState(1800) // 30 minutes
-  const [diceValue, setDiceValue] = useState(1)
-  const [isRolling, setIsRolling] = useState(false)
-  const [showQuestion, setShowQuestion] = useState(false)
-  const [canvasImage, setCanvasImage] = useState<string | null>(null)
-  const [gameStarted, setGameStarted] = useState(false)
-  const router = useRouter()
-  const canvasRef = useRef<any>(null)
+  const [timeLeft, setTimeLeft] = useState(30)
+  const [gamePhase, setGamePhase] = useState<"rolling" | "question" | "spldv_equation" | "spldv_photo" | "completed">(
+    "rolling",
+  )
+  const [studentName, setStudentName] = useState("")
+  const [studentClass, setStudentClass] = useState("")
+  const [spldvEquation, setSPLDVEquation] = useState<SPLDVEquation | null>(null)
+  const [spldvStep, setSPLDVStep] = useState<"equation" | "photo">("equation")
+  const [photoTaken, setPhotoTaken] = useState(false)
+  const [canvasData, setCanvasData] = useState<string | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [cameraActive, setCameraActive] = useState(false)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Add these state variables after the existing ones:
-  const [spldvStep, setSpldvStep] = useState<1 | 2>(1) // Step 1: equation, Step 2: multiple choice
-  const [spldvEquation, setSpldvEquation] = useState<string>("")
+  // Sound effects
+  const playSound = (soundFile: string) => {
+    const audio = new Audio(`/sounds/${soundFile}`)
+    audio.play().catch((e) => console.log("Sound play failed:", e))
+  }
+
+  // Generate SPLDV equation based on difficulty
+  const generateSPLDVEquation = (difficulty: string): SPLDVEquation => {
+    let a1, b1, c1, a2, b2, c2, x, y
+
+    switch (difficulty) {
+      case "mudah":
+        // Simple coefficients
+        x = Math.floor(Math.random() * 5) + 1
+        y = Math.floor(Math.random() * 5) + 1
+        a1 = Math.floor(Math.random() * 3) + 1
+        b1 = Math.floor(Math.random() * 3) + 1
+        a2 = Math.floor(Math.random() * 3) + 1
+        b2 = Math.floor(Math.random() * 3) + 1
+        break
+      case "sedang":
+        // Medium coefficients
+        x = Math.floor(Math.random() * 8) + 1
+        y = Math.floor(Math.random() * 8) + 1
+        a1 = Math.floor(Math.random() * 5) + 1
+        b1 = Math.floor(Math.random() * 5) + 1
+        a2 = Math.floor(Math.random() * 5) + 1
+        b2 = Math.floor(Math.random() * 5) + 1
+        break
+      case "sulit":
+        // Complex coefficients
+        x = Math.floor(Math.random() * 10) + 1
+        y = Math.floor(Math.random() * 10) + 1
+        a1 = Math.floor(Math.random() * 7) + 2
+        b1 = Math.floor(Math.random() * 7) + 2
+        a2 = Math.floor(Math.random() * 7) + 2
+        b2 = Math.floor(Math.random() * 7) + 2
+        break
+      default:
+        x = 2
+        y = 3
+        a1 = 1
+        b1 = 1
+        a2 = 1
+        b2 = 1
+    }
+
+    c1 = a1 * x + b1 * y
+    c2 = a2 * x + b2 * y
+
+    return {
+      equation1: `${a1}x + ${b1}y = ${c1}`,
+      equation2: `${a2}x + ${b2}y = ${c2}`,
+      solutionX: x,
+      solutionY: y,
+    }
+  }
 
   useEffect(() => {
-    const userData = localStorage.getItem("user")
-    if (!userData) {
+    const name = localStorage.getItem("studentName")
+    const kelas = localStorage.getItem("studentClass")
+    if (!name || !kelas) {
       router.push("/login-siswa")
       return
     }
-
-    const parsedUser = JSON.parse(userData)
-    if (parsedUser.role !== "siswa") {
-      router.push("/")
-      return
-    }
-
-    setUser(parsedUser)
-    initializeSession(parsedUser)
+    setStudentName(name)
+    setStudentClass(kelas)
+    createGameSession(name, kelas)
   }, [])
 
   useEffect(() => {
-    if (gameStarted && gameTime > 0) {
-      const timer = setInterval(() => {
-        setGameTime((prev) => {
-          if (prev <= 1) {
-            endGame()
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-      return () => clearInterval(timer)
-    }
-  }, [gameStarted, gameTime])
-
-  useEffect(() => {
-    if (timeLeft > 0 && showQuestion) {
+    if (gamePhase === "question" || gamePhase === "spldv_photo") {
       const timer = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
@@ -100,507 +133,512 @@ export default function GamePage() {
           return prev - 1
         })
       }, 1000)
+      timerRef.current = timer
       return () => clearInterval(timer)
     }
-  }, [timeLeft, showQuestion])
+  }, [gamePhase])
 
-  const initializeSession = async (userData: User) => {
+  const createGameSession = async (name: string, kelas: string) => {
     try {
       const response = await fetch("/api/session/create", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          user_id: userData.id,
-          guru_id: userData.guru_id,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentName: name, studentClass: kelas }),
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        setSession(data.session)
-        setGameStarted(true)
-      }
+      const data = await response.json()
+      setSessionId(data.sessionId)
     } catch (error) {
       console.error("Error creating session:", error)
     }
   }
 
-  const rollDice = async () => {
-    if (!session || isRolling) return
+  const rollDice = () => {
+    playSound("dice.mp3")
+    const roll = Math.floor(Math.random() * 6) + 1
+    const newPosition = Math.min(currentPosition + roll, 100)
+    setCurrentPosition(newPosition)
 
-    setIsRolling(true)
+    if (newPosition === 100) {
+      completeGame()
+      return
+    }
 
-    // Animate dice roll
-    const rollAnimation = setInterval(() => {
-      setDiceValue(Math.floor(Math.random() * 6) + 1)
-    }, 100)
-
-    setTimeout(async () => {
-      clearInterval(rollAnimation)
-      const finalValue = Math.floor(Math.random() * 6) + 1
-      setDiceValue(finalValue)
-      setIsRolling(false)
-
-      // Play dice sound
-      playSound("https://www.soundjay.com/misc/sounds/bell-ringing-05.wav")
-
-      // Move player
-      const newPosition = Math.min(session.current_position + finalValue, BOARD_SIZE - 1)
-      const tileType = getTileType(newPosition)
-
-      // Update position
-      await updatePosition(newPosition)
-
-      // Check if reached finish
-      if (newPosition === BOARD_SIZE - 1) {
-        alert("🎉 Selamat! Anda telah mencapai FINISH!")
-        endGame()
-        return
-      }
-
-      // Handle tile action
-      if (tileType === "SPLDV" || tileType === "MatDas") {
-        await loadQuestion(tileType)
-      } else if (tileType === "Bonus") {
-        handleBonusTile()
-      }
-    }, 1000)
+    fetchQuestion()
+    updatePosition(newPosition)
   }
 
-  // Helper function to determine tile type based on position
-  const getTileType = (position: number) => {
-    if (position === 0) return "START"
-    if (position === BOARD_SIZE - 1) return "FINISH"
-
-    // Deterministic pattern based on position
-    const pattern = position % 5
-    if (pattern === 1 || pattern === 2) return "SPLDV"
-    if (pattern === 3) return "MatDas"
-    if (pattern === 4) return "Bonus"
-    return "Empty"
-  }
-
-  const updatePosition = async (position: number) => {
+  const fetchQuestion = async () => {
     try {
-      const response = await fetch("/api/session/update-position", {
+      const response = await fetch("/api/questions/random")
+      const question = await response.json()
+      setCurrentQuestion(question)
+
+      if (question.type === "spldv") {
+        const equation = generateSPLDVEquation(question.difficulty)
+        setSPLDVEquation(equation)
+        setGamePhase("spldv_equation")
+        setSPLDVStep("equation")
+        setTimeLeft(60) // 1 minute for SPLDV
+      } else {
+        setGamePhase("question")
+        setTimeLeft(30) // 30 seconds for multiple choice
+      }
+      setSelectedAnswer("")
+    } catch (error) {
+      console.error("Error fetching question:", error)
+    }
+  }
+
+  const handleAnswer = async (answer: string) => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+    }
+
+    setSelectedAnswer(answer)
+    const isCorrect = answer === currentQuestion?.correct_answer
+
+    if (isCorrect) {
+      playSound("correct.mp3")
+      const newScore = score + 10
+      setScore(newScore)
+      updateScore(newScore)
+
+      // Bonus for quick answer
+      if (timeLeft > 20) {
+        playSound("bonus.mp3")
+        const bonusScore = newScore + 5
+        setScore(bonusScore)
+        updateScore(bonusScore)
+      }
+    } else {
+      playSound("wrong.mp3")
+    }
+
+    updateStats(isCorrect)
+    setTimeout(() => {
+      setGamePhase("rolling")
+    }, 2000)
+  }
+
+  const handleSPLDVNext = () => {
+    if (spldvStep === "equation") {
+      setSPLDVStep("photo")
+      setGamePhase("spldv_photo")
+      setTimeLeft(120) // 2 minutes for photo
+    }
+  }
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        setCameraActive(true)
+      }
+    } catch (error) {
+      console.error("Error accessing camera:", error)
+      alert("Tidak dapat mengakses kamera. Pastikan izin kamera telah diberikan.")
+    }
+  }
+
+  const takePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const canvas = canvasRef.current
+      const video = videoRef.current
+      const context = canvas.getContext("2d")
+
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      context?.drawImage(video, 0, 0)
+
+      const photoData = canvas.toDataURL("image/jpeg", 0.8)
+      setCanvasData(photoData)
+      setPhotoTaken(true)
+      playSound("upload.mp3")
+
+      // Stop camera
+      const stream = video.srcObject as MediaStream
+      stream?.getTracks().forEach((track) => track.stop())
+      setCameraActive(false)
+    }
+  }
+
+  const submitSPLDVAnswer = async () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+    }
+
+    if (!photoTaken || !canvasData) {
+      playSound("wrong.mp3")
+      updateStats(false)
+      setTimeout(() => {
+        setGamePhase("rolling")
+        resetSPLDVState()
+      }, 2000)
+      return
+    }
+
+    try {
+      // Save photo submission
+      await fetch("/api/canvas/save", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          session_id: session?.id,
-          position,
+          sessionId,
+          studentName,
+          studentClass,
+          questionText: `${spldvEquation?.equation1}, ${spldvEquation?.equation2}`,
+          difficulty: currentQuestion?.difficulty,
+          canvasData,
+          equation1: spldvEquation?.equation1,
+          equation2: spldvEquation?.equation2,
+          solutionX: spldvEquation?.solutionX,
+          solutionY: spldvEquation?.solutionY,
         }),
       })
 
-      if (response.ok) {
-        setSession((prev) => (prev ? { ...prev, current_position: position } : null))
-      }
+      playSound("correct.mp3")
+      const newScore = score + 15 // Higher score for SPLDV
+      setScore(newScore)
+      updateScore(newScore)
+      updateStats(true)
+
+      setTimeout(() => {
+        setGamePhase("rolling")
+        resetSPLDVState()
+      }, 2000)
+    } catch (error) {
+      console.error("Error submitting SPLDV answer:", error)
+      playSound("wrong.mp3")
+      updateStats(false)
+      setTimeout(() => {
+        setGamePhase("rolling")
+        resetSPLDVState()
+      }, 2000)
+    }
+  }
+
+  const resetSPLDVState = () => {
+    setSPLDVEquation(null)
+    setSPLDVStep("equation")
+    setPhotoTaken(false)
+    setCanvasData(null)
+    setCameraActive(false)
+  }
+
+  const handleTimeUp = () => {
+    playSound("timeout.mp3")
+    if (gamePhase === "spldv_photo") {
+      // Mark as incomplete/wrong for SPLDV
+      updateStats(false)
+      setTimeout(() => {
+        setGamePhase("rolling")
+        resetSPLDVState()
+      }, 1000)
+    } else {
+      updateStats(false)
+      setTimeout(() => {
+        setGamePhase("rolling")
+      }, 1000)
+    }
+  }
+
+  const updatePosition = async (position: number) => {
+    if (!sessionId) return
+    try {
+      await fetch("/api/session/update-position", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, position }),
+      })
     } catch (error) {
       console.error("Error updating position:", error)
     }
   }
 
-  const loadQuestion = async (category: string) => {
+  const updateScore = async (newScore: number) => {
+    if (!sessionId) return
     try {
-      const response = await fetch(`/api/questions/random?category=${category}&guru_id=${user?.guru_id}`)
-      if (response.ok) {
-        const data = await response.json()
-        setCurrentQuestion(data.question)
-
-        if (category === "SPLDV") {
-          // For SPLDV, start with step 1 (show equation only)
-          setSpldvStep(1)
-          setSpldvEquation(data.question.question)
-          setTimeLeft(data.question.time_limit)
-          setShowQuestion(true)
-          setSelectedAnswer("")
-          setCanvasImage(null)
-        } else {
-          // For MatDas, show normal multiple choice
-          setTimeLeft(data.question.time_limit)
-          setShowQuestion(true)
-          setSelectedAnswer("")
-          setCanvasImage(null)
-        }
-      }
-    } catch (error) {
-      console.error("Error loading question:", error)
-    }
-  }
-
-  const handleBonusTile = () => {
-    const bonusActions = [
-      { text: "Maju 2 langkah!", move: 2 },
-      { text: "Mundur 1 langkah!", move: -1 },
-      { text: "Bonus +5 poin!", score: 5 },
-      { text: "Maju 3 langkah!", move: 3 },
-    ]
-
-    const bonus = bonusActions[Math.floor(Math.random() * bonusActions.length)]
-
-    if (bonus.move) {
-      const newPos = Math.max(0, Math.min(session!.current_position + bonus.move, BOARD_SIZE - 1))
-      updatePosition(newPos)
-    }
-
-    if (bonus.score) {
-      updateScore(bonus.score)
-    }
-
-    alert(bonus.text)
-  }
-
-  const handleAnswerSubmit = async () => {
-    if (!currentQuestion || !session) return
-
-    playSound("https://www.soundjay.com/misc/sounds/bell-ringing-05.wav")
-
-    // For SPLDV Step 1, just move to step 2
-    if (currentQuestion.category === "SPLDV" && spldvStep === 1) {
-      // Save canvas if exists
-      if (canvasImage) {
-        await saveCanvas()
-      }
-
-      // Move to step 2 (multiple choice)
-      setSpldvStep(2)
-      setTimeLeft(30) // Give 30 seconds for multiple choice
-      return
-    }
-
-    // For SPLDV Step 2 or MatDas, process the answer
-    if (!selectedAnswer) return
-
-    const isCorrect = selectedAnswer === currentQuestion.correct_answer
-    const scoreChange = currentQuestion.category === "SPLDV" ? (isCorrect ? 10 : -5) : isCorrect ? 5 : -3
-
-    // Update score and stats
-    await updateScore(scoreChange)
-    await updateStats(isCorrect)
-
-    setShowQuestion(false)
-    setCurrentQuestion(null)
-    setSpldvStep(1) // Reset for next question
-
-    // Check if game should end
-    if (session.total_jawaban >= 20 || session.current_position >= BOARD_SIZE - 1) {
-      endGame()
-    }
-  }
-
-  const handleTimeUp = () => {
-    if (currentQuestion?.category === "SPLDV") {
-      updateScore(-5)
-    } else {
-      updateScore(-3)
-    }
-    updateStats(false)
-    setShowQuestion(false)
-    setCurrentQuestion(null)
-  }
-
-  const updateScore = async (change: number) => {
-    try {
-      const response = await fetch("/api/session/update-score", {
+      await fetch("/api/session/update-score", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          session_id: session?.id,
-          score_change: change,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, score: newScore }),
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        setSession((prev) => (prev ? { ...prev, skor: data.new_score } : null))
-      }
     } catch (error) {
       console.error("Error updating score:", error)
     }
   }
 
   const updateStats = async (isCorrect: boolean) => {
+    if (!sessionId) return
     try {
       await fetch("/api/session/update-stats", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          session_id: session?.id,
-          is_correct: isCorrect,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, isCorrect }),
       })
-
-      setSession((prev) =>
-        prev
-          ? {
-              ...prev,
-              total_jawaban: prev.total_jawaban + 1,
-              total_benar: prev.total_benar + (isCorrect ? 1 : 0),
-            }
-          : null,
-      )
     } catch (error) {
       console.error("Error updating stats:", error)
     }
   }
 
-  const saveCanvas = async () => {
-    if (!canvasImage || !session || !currentQuestion) return
-
-    try {
-      await fetch("/api/canvas/save", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          session_id: session.id,
-          question_id: currentQuestion.id,
-          image_data: canvasImage,
-        }),
-      })
-    } catch (error) {
-      console.error("Error saving canvas:", error)
-    }
-  }
-
-  const exportCanvas = () => {
-    if (canvasRef.current) {
-      const imageData = canvasRef.current.exportCanvas()
-      setCanvasImage(imageData)
-
-      // Download the image
-      const link = document.createElement("a")
-      link.download = `soal-${currentQuestion?.id}-${Date.now()}.png`
-      link.href = imageData
-      link.click()
-    }
-  }
-
-  const endGame = async () => {
+  const completeGame = async () => {
+    if (!sessionId) return
     try {
       await fetch("/api/session/complete", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          session_id: session?.id,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
       })
-
-      router.push("/feedback")
+      playSound("success.mp3")
+      setGamePhase("completed")
     } catch (error) {
-      console.error("Error ending game:", error)
+      console.error("Error completing game:", error)
     }
   }
 
-  const playSound = (src: string) => {
-    const audio = new Audio(src)
-    audio.play().catch(() => {
-      // Ignore audio play errors
-    })
-  }
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
-
-  if (!user || !session) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+  if (gamePhase === "completed") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-400 to-blue-600">
+        <Navbar />
+        <div className="container mx-auto px-4 py-8">
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-center">
+            <Trophy className="w-24 h-24 text-yellow-400 mx-auto mb-4" />
+            <h1 className="text-4xl font-bold text-white mb-4">Selamat!</h1>
+            <p className="text-xl text-white mb-4">Kamu telah menyelesaikan permainan!</p>
+            <p className="text-2xl font-bold text-yellow-300 mb-8">Skor Akhir: {score}</p>
+            <Button onClick={() => router.push("/leaderboard")} className="mr-4">
+              Lihat Leaderboard
+            </Button>
+            <Button onClick={() => router.push("/")} variant="outline">
+              Kembali ke Beranda
+            </Button>
+          </motion.div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      {/* Game Header */}
-      <div className="bg-white rounded-xl p-6 shadow-lg border border-white/20 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Game SPLDV
-            </h1>
-            <p className="text-gray-600 mt-1">Selamat bermain, {user.nama}! 🎮</p>
-          </div>
-
-          <div className="flex gap-3">
-            <Badge variant="outline" className="flex items-center gap-2 px-4 py-2 text-base">
-              <Clock className="h-5 w-5 text-blue-500" />
-              <span className="font-mono">{formatTime(gameTime)}</span>
-            </Badge>
-            <Badge variant="outline" className="flex items-center gap-2 px-4 py-2 text-base">
-              <Trophy className="h-5 w-5 text-yellow-500" />
-              <span className="font-bold">{session.skor} poin</span>
-            </Badge>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-purple-400 via-pink-500 to-red-500">
+      <Navbar />
+      <div className="container mx-auto px-4 py-8">
+        {/* Game Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <Card>
+            <CardContent className="p-4 text-center">
+              <Target className="w-8 h-8 text-blue-500 mx-auto mb-2" />
+              <p className="text-sm text-gray-600">Posisi</p>
+              <p className="text-2xl font-bold">{currentPosition}/100</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <Star className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
+              <p className="text-sm text-gray-600">Skor</p>
+              <p className="text-2xl font-bold">{score}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <Clock className="w-8 h-8 text-red-500 mx-auto mb-2" />
+              <p className="text-sm text-gray-600">Waktu</p>
+              <p className="text-2xl font-bold">{timeLeft}s</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <Trophy className="w-8 h-8 text-green-500 mx-auto mb-2" />
+              <p className="text-sm text-gray-600">Progress</p>
+              <Progress value={currentPosition} className="mt-2" />
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="mt-6">
-          <div className="flex justify-between text-sm text-gray-600 mb-3">
-            <span className="font-medium">Progress: {session.total_jawaban}/20 soal</span>
-            <span className="font-medium">
-              Benar: {session.total_benar} | Akurasi:{" "}
-              {session.total_jawaban > 0 ? Math.round((session.total_benar / session.total_jawaban) * 100) : 0}%
-            </span>
-          </div>
-          <Progress value={(session.total_jawaban / 20) * 100} className="h-3 bg-gray-200" />
-        </div>
-      </div>
-
-      {/* Game Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Game Board */}
-        <div className="lg:col-span-2">
-          <GameBoard
-            boardSize={BOARD_SIZE}
-            currentPosition={session.current_position}
-            isRolling={isRolling}
-            diceValue={diceValue}
-            onRollDice={rollDice}
-            disabled={showQuestion}
-          />
+        <div className="mb-8">
+          <GameBoard currentPosition={currentPosition} />
         </div>
 
-        {/* Question/Stats Panel */}
-        <div className="space-y-6">
-          {showQuestion && currentQuestion ? (
-            <div className="bg-white rounded-xl p-6 shadow-lg border border-white/20">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Badge className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-3 py-1">
-                    {currentQuestion.category}
-                  </Badge>
-                  {currentQuestion.category === "SPLDV" && <Badge variant="outline">Step {spldvStep}/2</Badge>}
-                </div>
-                <Badge variant="destructive" className="flex items-center gap-1 px-3 py-1">
-                  <Clock className="h-4 w-4" />
-                  {formatTime(timeLeft)}
-                </Badge>
-              </div>
-
-              {/* Question Display */}
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg mb-4">
-                {currentQuestion.category === "SPLDV" && spldvStep === 1 ? (
-                  <div>
-                    <p className="font-medium mb-3 text-gray-800">Selesaikan sistem persamaan berikut:</p>
-                    <div className="bg-white p-4 rounded-lg border-2 border-dashed border-blue-300">
-                      <p className="font-mono text-lg text-center text-gray-800">{spldvEquation}</p>
-                    </div>
-                    <p className="text-sm text-gray-600 mt-3">
-                      💡 Gunakan canvas di bawah untuk menyelesaikan persamaan, lalu klik "Lanjut ke Pilihan Jawaban"
-                    </p>
-                  </div>
-                ) : (
-                  <p className="font-medium text-gray-800">
-                    {currentQuestion.category === "SPLDV"
-                      ? "Pilih jawaban yang benar berdasarkan perhitungan Anda:"
-                      : currentQuestion.question}
-                  </p>
-                )}
-              </div>
-
-              {/* Canvas */}
-              {(currentQuestion.category === "SPLDV" || currentQuestion.category === "MatDas") && (
-                <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium flex items-center gap-2 text-gray-700">
-                      <Palette className="h-4 w-4" />
-                      Canvas Coret-Coret
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={exportCanvas}
-                      className="flex items-center gap-1 bg-transparent"
-                    >
-                      <Download className="h-4 w-4" />
-                      Ekspor PNG
-                    </Button>
-                  </div>
-                  <GameCanvas ref={canvasRef} />
-                </div>
-              )}
-
-              {/* Answer Options */}
-              {(currentQuestion.category === "MatDas" || (currentQuestion.category === "SPLDV" && spldvStep === 2)) && (
-                <div className="space-y-3 mb-4">
-                  {["A", "B", "C", "D"].map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => setSelectedAnswer(option)}
-                      className={`w-full p-4 text-left rounded-lg border-2 transition-all duration-200 ${
-                        selectedAnswer === option
-                          ? "border-blue-500 bg-blue-50 shadow-md transform scale-[1.02]"
-                          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      <span className="font-bold mr-3 text-lg">{option}.</span>
-                      <span className="text-gray-800">
-                        {currentQuestion[`option_${option.toLowerCase()}` as keyof Question] as string}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Submit Button */}
-              <Button
-                onClick={handleAnswerSubmit}
-                disabled={
-                  (currentQuestion.category === "SPLDV" && spldvStep === 2 && !selectedAnswer) ||
-                  (currentQuestion.category === "MatDas" && !selectedAnswer)
-                }
-                className="w-full game-button text-lg py-3 flex items-center gap-2"
-              >
-                <Send className="h-5 w-5" />
-                {currentQuestion.category === "SPLDV" && spldvStep === 1
-                  ? "Lanjut ke Pilihan Jawaban"
-                  : "Kirim Jawaban"}
-              </Button>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl p-8 shadow-lg border border-white/20 text-center">
-              <div className="text-gray-500">
-                <div className="text-6xl mb-4">🎲</div>
-                <h3 className="text-lg font-semibold mb-2">Lempar Dadu!</h3>
-                <p className="text-gray-400">Klik tombol "Lempar Dadu" untuk melanjutkan permainan</p>
-              </div>
-            </div>
+        {/* Game Content */}
+        <AnimatePresence mode="wait">
+          {gamePhase === "rolling" && (
+            <motion.div
+              key="rolling"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="text-center"
+            >
+              <Card className="max-w-md mx-auto">
+                <CardContent className="p-8">
+                  <h2 className="text-2xl font-bold mb-4">Lempar Dadu!</h2>
+                  <Button onClick={rollDice} size="lg" className="w-full">
+                    🎲 Lempar Dadu
+                  </Button>
+                </CardContent>
+              </Card>
+            </motion.div>
           )}
 
-          {/* Game Stats */}
-          <div className="bg-white rounded-xl p-6 shadow-lg border border-white/20">
-            <h3 className="font-bold text-lg mb-4 text-gray-800">📊 Statistik Permainan</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-3 rounded-lg">
-                <div className="text-sm text-blue-600 font-medium">Posisi</div>
-                <div className="text-xl font-bold text-blue-800">{session.current_position + 1}/100</div>
-              </div>
-              <div className="bg-gradient-to-r from-green-50 to-green-100 p-3 rounded-lg">
-                <div className="text-sm text-green-600 font-medium">Skor</div>
-                <div className="text-xl font-bold text-green-800">{session.skor}</div>
-              </div>
-              <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-3 rounded-lg">
-                <div className="text-sm text-purple-600 font-medium">Soal</div>
-                <div className="text-xl font-bold text-purple-800">{session.total_jawaban}/20</div>
-              </div>
-              <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 p-3 rounded-lg">
-                <div className="text-sm text-yellow-600 font-medium">Akurasi</div>
-                <div className="text-xl font-bold text-yellow-800">
-                  {session.total_jawaban > 0 ? Math.round((session.total_benar / session.total_jawaban) * 100) : 0}%
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+          {gamePhase === "question" && currentQuestion && (
+            <motion.div
+              key="question"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <Card className="max-w-2xl mx-auto">
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Soal Pilihan Ganda</CardTitle>
+                    <Badge
+                      variant={
+                        currentQuestion.difficulty === "mudah"
+                          ? "default"
+                          : currentQuestion.difficulty === "sedang"
+                            ? "secondary"
+                            : "destructive"
+                      }
+                    >
+                      {currentQuestion.difficulty.toUpperCase()}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Waktu tersisa: {timeLeft} detik</span>
+                    <Progress value={(timeLeft / 30) * 100} className="w-32" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-lg mb-6">{currentQuestion.question_text}</p>
+                  <div className="space-y-3">
+                    {["A", "B", "C", "D"].map((option) => (
+                      <Button
+                        key={option}
+                        variant={selectedAnswer === option ? "default" : "outline"}
+                        className="w-full text-left justify-start"
+                        onClick={() => handleAnswer(option)}
+                      >
+                        {option}. {currentQuestion[`option_${option.toLowerCase()}` as keyof Question]}
+                      </Button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {gamePhase === "spldv_equation" && spldvEquation && (
+            <motion.div
+              key="spldv_equation"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <Card className="max-w-2xl mx-auto">
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Soal SPLDV - Langkah 1</CardTitle>
+                    <Badge variant="secondary">SPLDV</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center mb-6">
+                    <h3 className="text-xl font-bold mb-4">Selesaikan sistem persamaan berikut:</h3>
+                    <div className="bg-gray-100 p-6 rounded-lg">
+                      <p className="text-2xl font-mono mb-2">{spldvEquation.equation1}</p>
+                      <p className="text-2xl font-mono">{spldvEquation.equation2}</p>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-4">Selesaikan di kertas, lalu foto hasil pekerjaanmu!</p>
+                  </div>
+                  <Button onClick={handleSPLDVNext} className="w-full" size="lg">
+                    Lanjut ke Foto Jawaban
+                  </Button>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {gamePhase === "spldv_photo" && (
+            <motion.div
+              key="spldv_photo"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <Card className="max-w-2xl mx-auto">
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Soal SPLDV - Langkah 2</CardTitle>
+                    <Badge variant="secondary">FOTO JAWABAN</Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Waktu tersisa: {timeLeft} detik</span>
+                    <Progress value={(timeLeft / 120) * 100} className="w-32" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    {!cameraActive && !photoTaken && (
+                      <div>
+                        <Camera className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                        <p className="mb-4">Foto hasil pekerjaanmu di kertas</p>
+                        <Button onClick={startCamera} size="lg">
+                          <Camera className="w-4 h-4 mr-2" />
+                          Buka Kamera
+                        </Button>
+                      </div>
+                    )}
+
+                    {cameraActive && !photoTaken && (
+                      <div>
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          className="w-full max-w-md mx-auto rounded-lg mb-4"
+                        />
+                        <Button onClick={takePhoto} size="lg">
+                          <Camera className="w-4 h-4 mr-2" />
+                          Ambil Foto
+                        </Button>
+                      </div>
+                    )}
+
+                    {photoTaken && canvasData && (
+                      <div>
+                        <img
+                          src={canvasData || "/placeholder.svg"}
+                          alt="Foto jawaban"
+                          className="w-full max-w-md mx-auto rounded-lg mb-4"
+                        />
+                        <div className="space-x-4">
+                          <Button onClick={submitSPLDVAnswer} size="lg">
+                            <Upload className="w-4 h-4 mr-2" />
+                            Kirim Jawaban
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setPhotoTaken(false)
+                              setCanvasData(null)
+                            }}
+                            variant="outline"
+                          >
+                            Foto Ulang
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    <canvas ref={canvasRef} style={{ display: "none" }} />
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )

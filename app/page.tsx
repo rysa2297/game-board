@@ -124,20 +124,30 @@ export default function HomePage() {
               </p>
             </div>
             <div>
-              <h3 className="font-semibold text-lg mb-2">🖌️ Canvas Coret-Coret</h3>
+              <h3 className="font-semibold text-lg mb-2">📸 Upload Foto Coretan</h3>
               <p className="text-gray-600">
-                Fitur canvas untuk mencoret-coret saat mengerjakan soal, dapat diekspor ke PNG
+                Upload foto hasil coretan saat mengerjakan soal SPLDV untuk dokumentasi proses pembelajaran
               </p>
             </div>
             <div>
               <h3 className="font-semibold text-lg mb-2">⏱️ Sistem Waktu</h3>
               <p className="text-gray-600">
-                Batas waktu berbeda untuk setiap kategori soal: SPLDV (1 menit), MatDas (20 detik)
+                Batas waktu berbeda untuk setiap kategori soal: SPLDV (1.5 menit), MatDas (30 detik)
               </p>
             </div>
             <div>
               <h3 className="font-semibold text-lg mb-2">🏆 Sistem Skor</h3>
               <p className="text-gray-600">Skor dinamis: SPLDV benar +10, salah -5; MatDas benar +5, salah -3</p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg mb-2">🔊 Efek Suara</h3>
+              <p className="text-gray-600">
+                Sound effect untuk jawaban benar, salah, bonus, dan interaksi game lainnya
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg mb-2">📊 Tracking Progress</h3>
+              <p className="text-gray-600">Pantau progress belajar dengan statistik real-time dan leaderboard</p>
             </div>
           </div>
         </div>

@@ -1,27 +1,28 @@
 "use client"
+
 import { useState, useEffect } from "react"
 import { Dice1, Dice2, Dice3, Dice4, Dice5, Dice6 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
 interface GameBoardProps {
-  boardSize: number
+  boardSize?: number
   currentPosition: number
-  isRolling: boolean
-  diceValue: number
-  onRollDice: () => void
-  disabled: boolean
+  isRolling?: boolean
+  diceValue?: number
+  onRollDice?: () => void
+  disabled?: boolean
 }
 
 const DICE_ICONS = [Dice1, Dice2, Dice3, Dice4, Dice5, Dice6]
 
-export default function GameBoard({
-  boardSize,
+export function GameBoard({
+  boardSize = 100,
   currentPosition,
-  isRolling,
-  diceValue,
+  isRolling = false,
+  diceValue = 1,
   onRollDice,
-  disabled,
+  disabled = false,
 }: GameBoardProps) {
   const [board, setBoard] = useState<string[]>([])
 
@@ -133,27 +134,29 @@ export default function GameBoard({
       </div>
 
       {/* Dice Section */}
-      <div className="bg-white rounded-xl p-6 shadow-lg border border-white/20">
-        <div className="text-center">
-          <div className="mb-4">
-            <div
-              className={`inline-block bg-gradient-to-br from-blue-100 to-purple-100 p-6 rounded-2xl shadow-lg ${isRolling ? "animate-bounce" : ""}`}
-            >
-              <DiceIcon className="h-16 w-16 text-blue-600" />
+      {onRollDice && (
+        <div className="bg-white rounded-xl p-6 shadow-lg border border-white/20">
+          <div className="text-center">
+            <div className="mb-4">
+              <div
+                className={`inline-block bg-gradient-to-br from-blue-100 to-purple-100 p-6 rounded-2xl shadow-lg ${isRolling ? "animate-bounce" : ""}`}
+              >
+                <DiceIcon className="h-16 w-16 text-blue-600" />
+              </div>
+              <div className="mt-3">
+                <Badge variant="outline" className="text-lg px-4 py-1">
+                  {isRolling ? "Mengocok..." : `Dadu: ${diceValue}`}
+                </Badge>
+              </div>
             </div>
-            <div className="mt-3">
-              <Badge variant="outline" className="text-lg px-4 py-1">
-                {isRolling ? "Mengocok..." : `Dadu: ${diceValue}`}
-              </Badge>
-            </div>
-          </div>
 
-          <Button onClick={onRollDice} disabled={disabled || isRolling} className="game-button text-lg px-8 py-3">
-            <span className="mr-2">🎲</span>
-            {isRolling ? "Mengocok..." : "Lempar Dadu"}
-          </Button>
+            <Button onClick={onRollDice} disabled={disabled || isRolling} className="game-button text-lg px-8 py-3">
+              <span className="mr-2">🎲</span>
+              {isRolling ? "Mengocok..." : "Lempar Dadu"}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

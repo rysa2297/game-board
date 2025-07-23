@@ -1,32 +1,74 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { neon } from "@neondatabase/serverless"
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest) {
   try {
-    const { session_id, question_id, image_data } = await request.json()
+    const {
+      sessionId,
+      studentName,
+      studentClass,
+      questionText,
+      difficulty,
+      canvasData,
+      equation1,
+      equation2,
+      solutionX,
+      solutionY,
+    } = await request.json()
 
-    // In a real implementation, you'd upload the image to Supabase Storage
-    // For now, we'll just store the base64 data
-    const { data, error } = await supabase
-      .from("canvas_exports")
-      .insert([
-        {
-          session_id,
-          soal_id: question_id,
-          image_url: image_data,
-        },
-      ])
-      .select()
-      .single()
+    // Get Jakarta timezone timestamp
+    const jakartaTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" })
+    const jakartaTimestamp = new Date(jakartaTime)
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
+    // Save to spldv_submissions table
+    await sql`
+      INSERT INTO spldv_submissions (
+        session_id, 
+        student_name, 
+        student_class, 
+        equation_1, 
+        equation_2, 
+        solution_x, 
+        solution_y, 
+        photo_data, 
+        is_completed,
+        created_at_wib
+      ) VALUES (
+        ${sessionId}, 
+        ${studentName}, 
+        ${studentClass}, 
+        ${equation1}, 
+        ${equation2}, 
+        ${solutionX}, 
+        ${solutionY}, 
+        ${canvasData}, 
+        true,
+        ${jakartaTimestamp.toISOString()}
+      )
+    `
 
-    return NextResponse.json({ canvas_export: data })
+    // Update game session with SPLDV data
+    await sql`
+      UPDATE game_sessions 
+      SET 
+        spldv_equation_1 = ${equation1},
+        spldv_equation_2 = ${equation2},
+        spldv_solution_x = ${solutionX},
+        spldv_solution_y = ${solutionY},
+        photo_submission = ${canvasData},
+        submission_timestamp = ${jakartaTimestamp.toISOString()}
+      WHERE id = ${sessionId}
+    `
+
+    return NextResponse.json({
+      success: true,
+      message: "SPLDV submission saved successfully",
+      timestamp: jakartaTimestamp.toISOString(),
+    })
   } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Error saving SPLDV submission:", error)
+    return NextResponse.json({ error: "Failed to save SPLDV submission" }, { status: 500 })
   }
 }

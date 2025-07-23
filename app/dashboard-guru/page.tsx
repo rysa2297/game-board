@@ -2,278 +2,218 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, BookOpen, Plus, BarChart3, Clock, Trophy, Download, Eye, LogOut, School } from "lucide-react"
-import Link from "next/link"
-import AddQuestionModal from "@/components/add-question-modal"
-import StudentProgressTable from "@/components/student-progress-table"
-import QuestionBankManager from "@/components/question-bank-manager"
-
-interface User {
-  id: number
-  nama: string
-  sekolah: string
-  role: string
-}
+import { Navbar } from "@/components/navbar"
+import { StudentProgressTable } from "@/components/student-progress-table"
+import { StudentRankingTable } from "@/components/student-ranking-table"
+import { StudentPhotoGallery } from "@/components/student-photo-gallery"
+import { QuestionBankManager } from "@/components/question-bank-manager"
+import { AddQuestionModal } from "@/components/add-question-modal"
+import { Users, Trophy, BookOpen, Camera, TrendingUp, Calendar } from "lucide-react"
 
 interface DashboardStats {
-  total_students: number
-  total_sessions: number
-  avg_score: number
-  total_questions: number
-  completed_sessions: number
+  totalStudents: number
+  totalSessions: number
+  averageScore: number
+  totalQuestions: number
+  totalSPLDVSubmissions: number
 }
 
-export default function DashboardGuruPage() {
-  const [user, setUser] = useState<User | null>(null)
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [showAddQuestion, setShowAddQuestion] = useState(false)
-  const [loading, setLoading] = useState(true)
+export default function TeacherDashboard() {
   const router = useRouter()
+  const [stats, setStats] = useState<DashboardStats>({
+    totalStudents: 0,
+    totalSessions: 0,
+    averageScore: 0,
+    totalQuestions: 0,
+    totalSPLDVSubmissions: 0,
+  })
+  const [teacherName, setTeacherName] = useState("")
+  const [currentTime, setCurrentTime] = useState("")
 
   useEffect(() => {
-    const userData = localStorage.getItem("user")
-    if (!userData) {
+    const teacher = localStorage.getItem("teacherName")
+    if (!teacher) {
       router.push("/login-guru")
       return
     }
+    setTeacherName(teacher)
+    fetchStats()
 
-    const parsedUser = JSON.parse(userData)
-    if (parsedUser.role !== "guru") {
-      router.push("/")
-      return
-    }
+    // Update Jakarta time every second
+    const timeInterval = setInterval(() => {
+      const jakartaTime = new Date().toLocaleString("id-ID", {
+        timeZone: "Asia/Jakarta",
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+      setCurrentTime(jakartaTime)
+    }, 1000)
 
-    setUser(parsedUser)
-    fetchDashboardStats(parsedUser.id)
+    return () => clearInterval(timeInterval)
   }, [])
 
-  const fetchDashboardStats = async (guruId: number) => {
+  const fetchStats = async () => {
     try {
-      const response = await fetch(`/api/guru/stats?guru_id=${guruId}`)
-      if (response.ok) {
-        const data = await response.json()
-        setStats(data.stats)
-      }
+      const response = await fetch("/api/guru/stats")
+      const data = await response.json()
+      setStats(data)
     } catch (error) {
       console.error("Error fetching stats:", error)
-    } finally {
-      setLoading(false)
     }
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("user")
+    localStorage.removeItem("teacherName")
     router.push("/")
   }
 
-  if (!user) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
-  }
-
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800">Dashboard Guru</h1>
-          <div className="flex items-center gap-2 text-gray-600 mt-1">
-            <School className="h-4 w-4" />
-            <span>
-              {user.nama} - {user.sekolah}
-            </span>
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard Guru</h1>
+            <p className="text-gray-600">Selamat datang, {teacherName}</p>
+            <div className="flex items-center mt-2 text-sm text-gray-500">
+              <Calendar className="w-4 h-4 mr-2" />
+              <span>{currentTime} WIB</span>
+            </div>
           </div>
-        </div>
-
-        <div className="flex gap-2">
-          <Link href="/">
-            <Button variant="outline" className="bg-transparent">
-              Ke Beranda
-            </Button>
-          </Link>
-          <Button variant="outline" onClick={handleLogout} className="flex items-center gap-2 bg-transparent">
-            <LogOut className="h-4 w-4" />
+          <Button onClick={handleLogout} variant="outline">
             Logout
           </Button>
         </div>
-      </div>
 
-      {/* Stats Cards */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <div className="animate-pulse">
-                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                  <div className="h-8 bg-gray-200 rounded w-1/2"></div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <Card>
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Siswa</p>
-                  <p className="text-3xl font-bold text-blue-600">{stats?.total_students || 0}</p>
-                </div>
+              <div className="flex items-center">
                 <Users className="h-8 w-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Sesi Selesai</p>
-                  <p className="text-3xl font-bold text-green-600">{stats?.completed_sessions || 0}</p>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total Siswa</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalStudents}</p>
                 </div>
-                <Trophy className="h-8 w-8 text-green-600" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center">
+                <TrendingUp className="h-8 w-8 text-green-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total Sesi</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalSessions}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <Trophy className="h-8 w-8 text-yellow-600" />
+                <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Rata-rata Skor</p>
-                  <p className="text-3xl font-bold text-purple-600">{Math.round(stats?.avg_score || 0)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.averageScore.toFixed(1)}</p>
                 </div>
-                <BarChart3 className="h-8 w-8 text-purple-600" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Bank Soal</p>
-                  <p className="text-3xl font-bold text-orange-600">{stats?.total_questions || 0}</p>
+              <div className="flex items-center">
+                <BookOpen className="h-8 w-8 text-purple-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total Soal</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalQuestions}</p>
                 </div>
-                <BookOpen className="h-8 w-8 text-orange-600" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <Camera className="h-8 w-8 text-red-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Foto SPLDV</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalSPLDVSubmissions}</p>
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
-      )}
 
-      {/* Main Content Tabs */}
-      <Tabs defaultValue="students" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="students">Data Siswa</TabsTrigger>
-          <TabsTrigger value="questions">Bank Soal</TabsTrigger>
-          <TabsTrigger value="analytics">Analitik</TabsTrigger>
-        </TabsList>
+        {/* Main Content */}
+        <Tabs defaultValue="progress" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="progress">Progress Siswa</TabsTrigger>
+            <TabsTrigger value="ranking">Ranking & Nilai</TabsTrigger>
+            <TabsTrigger value="photos">Foto SPLDV</TabsTrigger>
+            <TabsTrigger value="questions">Bank Soal</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="students" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Progress Siswa
-              </CardTitle>
-              <CardDescription>Lihat progress dan hasil belajar siswa Anda</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <StudentProgressTable guruId={user.id} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="questions" className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-2xl font-bold">Bank Soal</h2>
-              <p className="text-gray-600">Kelola soal SPLDV dan MatDas</p>
-            </div>
-            <Button onClick={() => setShowAddQuestion(true)} className="game-button flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Tambah Soal
-            </Button>
-          </div>
-
-          <QuestionBankManager guruId={user.id} />
-        </TabsContent>
-
-        <TabsContent value="analytics" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <TabsContent value="progress">
             <Card>
               <CardHeader>
-                <CardTitle>Statistik Pembelajaran</CardTitle>
+                <CardTitle>Progress Siswa</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Tingkat Keberhasilan</span>
-                    <Badge variant="outline">
-                      {stats ? Math.round((stats.completed_sessions / Math.max(stats.total_sessions, 1)) * 100) : 0}%
-                    </Badge>
-                  </div>
-
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Rata-rata Waktu Bermain</span>
-                    <Badge variant="outline">
-                      <Clock className="h-3 w-3 mr-1" />
-                      25 menit
-                    </Badge>
-                  </div>
-
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Soal Paling Sulit</span>
-                    <Badge variant="destructive">SPLDV Substitusi</Badge>
-                  </div>
-                </div>
+                <StudentProgressTable />
               </CardContent>
             </Card>
+          </TabsContent>
 
+          <TabsContent value="ranking">
             <Card>
               <CardHeader>
-                <CardTitle>Aksi Cepat</CardTitle>
+                <CardTitle>Ranking Siswa Berdasarkan Nilai Tertinggi</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <Button variant="outline" className="w-full justify-start bg-transparent">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export Data Siswa
-                </Button>
-
-                <Button variant="outline" className="w-full justify-start bg-transparent">
-                  <Eye className="h-4 w-4 mr-2" />
-                  Lihat Canvas Siswa
-                </Button>
-
-                <Link href="/leaderboard" className="block">
-                  <Button variant="outline" className="w-full justify-start bg-transparent">
-                    <Trophy className="h-4 w-4 mr-2" />
-                    Lihat Leaderboard
-                  </Button>
-                </Link>
+              <CardContent>
+                <StudentRankingTable />
               </CardContent>
             </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+          </TabsContent>
 
-      {/* Add Question Modal */}
-      {showAddQuestion && (
-        <AddQuestionModal
-          guruId={user.id}
-          onClose={() => setShowAddQuestion(false)}
-          onSuccess={() => {
-            setShowAddQuestion(false)
-            fetchDashboardStats(user.id)
-          }}
-        />
-      )}
+          <TabsContent value="photos">
+            <Card>
+              <CardHeader>
+                <CardTitle>Galeri Foto Jawaban SPLDV</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <StudentPhotoGallery />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="questions">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Bank Soal</CardTitle>
+                  <AddQuestionModal onQuestionAdded={fetchStats} />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <QuestionBankManager />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   )
 }
